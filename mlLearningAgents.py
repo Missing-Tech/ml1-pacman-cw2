@@ -55,7 +55,17 @@ class GameStateFeatures:
             A tuple of features that are useful for the state
         """
 
-        return (self.state.getPacmanPosition(), tuple(self.state.getGhostPositions()))
+        food = self.state.getFood()
+        foodGrid = []
+        for row in food:
+            for val in row:
+                foodGrid.append(val)
+
+        return (
+            self.state.getPacmanPosition(),
+            tuple(self.state.getGhostPositions()),
+            tuple(foodGrid),
+        )
 
 
 class QLearnAgent(Agent):
@@ -187,9 +197,6 @@ class QLearnAgent(Agent):
         self.qValues[stateTuple][action] = qValue + self.alpha * (
             reward + self.gamma * nextQValue - qValue
         )
-        print(
-            f"Updated Q-value for {state.getFeaturesTuple()} and {action} to {self.qValues[stateTuple]}"
-        )
 
     def updateCount(self, state: GameStateFeatures, action: Directions):
         """
@@ -264,7 +271,6 @@ class QLearnAgent(Agent):
         action = None
         if self.lastState is not None:
             lastStateFeatures = GameStateFeatures(self.lastState)
-            stateFeaturesTuple = stateFeatures.getFeaturesTuple()
             self.updateCount(self.lastState, self.lastAction)
             self.learn(
                 lastStateFeatures,
@@ -273,11 +279,14 @@ class QLearnAgent(Agent):
                 stateFeatures,
             )
 
+        if util.flipCoin(self.epsilon):
+            action = random.choice(legal)
+        else:
             maxAction = None
             maxValue = 0
             for action in legal:
-                expectedUtility = self.qValues[stateFeaturesTuple][action]
-                count = self.frequencies[stateFeaturesTuple][action]
+                expectedUtility = self.getQValue(stateFeatures, action)
+                count = self.getCount(stateFeatures, action)
                 exploreValue = self.explorationFn(expectedUtility, count)
                 if exploreValue > maxValue:
                     maxValue = exploreValue
@@ -304,6 +313,20 @@ class QLearnAgent(Agent):
             state: the final game state
         """
         print(f"Game {self.getEpisodesSoFar()} just ended!")
+
+        lastStateFeatures = GameStateFeatures(self.lastState)
+        stateFeatures = GameStateFeatures(state)
+
+        # update Q-values
+        self.learn(
+            lastStateFeatures,
+            self.lastAction,
+            self.computeReward(self.lastState, state),
+            stateFeatures,
+        )
+
+        self.lastState = None
+        self.lastAction = None
 
         # Keep track of the number of games played, and set learning
         # parameters to zero when we are done with the pre-set number
