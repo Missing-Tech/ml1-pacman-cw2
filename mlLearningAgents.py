@@ -48,23 +48,34 @@ class GameStateFeatures:
             state: A given game state object
         """
         self.state = state
+        self.pacman = state.getPacmanPosition()
+        self.ghosts = tuple(state.getGhostPositions())
+        self.food = state.getFood()
+        self.foodGrid = tuple(
+            self.food[row][col]
+            for row in range(self.food.height)
+            for col in range(self.food.width)
+        )
 
-    def getFeaturesTuple(self) -> tuple:
+    def __hash__(self) -> int:
         """
         Returns:
-            A tuple of features that are useful for the state
+            A hash value representing the state
         """
+        return hash((self.pacman, self.ghosts, self.foodGrid))
 
-        food = self.state.getFood()
-        foodGrid = []
-        for row in food:
-            for val in row:
-                foodGrid.append(val)
+    def __eq__(self, other) -> bool:
+        """
+        Args:
+            other: Another GameStateFeatures object
 
-        return (
-            self.state.getPacmanPosition(),
-            tuple(self.state.getGhostPositions()),
-            tuple(foodGrid),
+        Returns:
+            True if the two objects are equal, False otherwise
+        """
+        return (self.pacman, self.ghosts, self.foodGrid) == (
+            other.pacman,
+            other.ghosts,
+            other.foodGrid,
         )
 
 
@@ -141,6 +152,10 @@ class QLearnAgent(Agent):
             The reward assigned for the given trajectory
         """
         # The reward is the difference in score between the two states
+        if endState.isWin():
+            return 10000
+        if endState.isLose():
+            return -10000
         return endState.getScore() - startState.getScore()
 
     def getQValue(self, state: GameStateFeatures, action: Directions) -> float:
@@ -152,8 +167,7 @@ class QLearnAgent(Agent):
         Returns:
             Q(state, action)
         """
-        stateTuple = state.getFeaturesTuple()
-        qValue = self.qValues[stateTuple][action]
+        qValue = self.qValues[state][action]
         return qValue
 
     def maxQValue(self, state: GameStateFeatures) -> float:
@@ -164,10 +178,9 @@ class QLearnAgent(Agent):
         Returns:
             q_value: the maximum estimated Q-value attainable from the state
         """
-        stateTuple = state.getFeaturesTuple()
-        if self.qValues[stateTuple].totalCount() == 0:
+        if self.qValues[state].totalCount() == 0:
             return 0
-        return max(self.qValues[stateTuple].values())
+        return max(self.qValues[state].values())
 
     def learn(
         self,
@@ -192,9 +205,8 @@ class QLearnAgent(Agent):
         # Compute the Q-value for the next state
         nextQValue = self.maxQValue(nextState)
 
-        stateTuple = state.getFeaturesTuple()
         # Update the Q-value for the state-action pair
-        self.qValues[stateTuple][action] = qValue + self.alpha * (
+        self.qValues[state][action] = qValue + self.alpha * (
             reward + self.gamma * nextQValue - qValue
         )
 
@@ -234,6 +246,7 @@ class QLearnAgent(Agent):
         Returns:
             The exploration value
         """
+        print("Utility: ", utility, " Counts: ", counts)
         return utility  # Greedy approach
 
     def getAction(self, state: GameState) -> Directions:
@@ -291,7 +304,6 @@ class QLearnAgent(Agent):
                 if exploreValue > maxValue:
                     maxValue = exploreValue
                     maxAction = action
-
             action = maxAction
 
         if action is None:
@@ -327,6 +339,11 @@ class QLearnAgent(Agent):
 
         self.lastState = None
         self.lastAction = None
+
+        if self.getEpisodesSoFar() < self.getNumTraining() / 2:
+            self.setEpsilon(0.1)
+        else:
+            self.setEpsilon(0.05)
 
         # Keep track of the number of games played, and set learning
         # parameters to zero when we are done with the pre-set number
