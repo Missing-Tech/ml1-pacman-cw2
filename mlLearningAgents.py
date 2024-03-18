@@ -27,6 +27,7 @@ from __future__ import print_function
 
 from collections import defaultdict
 import random
+import math
 
 from pacman import Directions, GameState
 from pacman_utils.game import Agent
@@ -53,8 +54,8 @@ class GameStateFeatures:
         self.food = state.getFood()
         self.foodGrid = tuple(
             self.food[row][col]
-            for row in range(self.food.height)
-            for col in range(self.food.width)
+            for row in range(self.food.width)
+            for col in range(self.food.height)
         )
 
     def __hash__(self) -> int:
@@ -62,7 +63,16 @@ class GameStateFeatures:
         Returns:
             A hash value representing the state
         """
-        return hash((self.pacman, self.ghosts, self.foodGrid))
+        return hash(
+            (
+                self.pacman,
+                self.ghosts,
+                self.foodGrid,
+            )
+        )
+
+    def __repr__(self) -> str:
+        return f"pacman: {self.pacman}, ghosts: {self.ghosts}"
 
     def __eq__(self, other) -> bool:
         """
@@ -72,7 +82,11 @@ class GameStateFeatures:
         Returns:
             True if the two objects are equal, False otherwise
         """
-        return (self.pacman, self.ghosts, self.foodGrid) == (
+        return (
+            self.pacman,
+            self.ghosts,
+            self.foodGrid,
+        ) == (
             other.pacman,
             other.ghosts,
             other.foodGrid,
@@ -218,7 +232,6 @@ class QLearnAgent(Agent):
             state: Starting state
             action: Action taken
         """
-
         self.frequencies[state][action] += 1
 
     def getCount(self, state: GameStateFeatures, action: Directions) -> int:
@@ -246,8 +259,11 @@ class QLearnAgent(Agent):
         Returns:
             The exploration value
         """
-        print("Utility: ", utility, " Counts: ", counts)
-        return utility  # Greedy approach
+
+        if counts == 0:
+            return float("inf")
+
+        return 1 / counts + utility + 1
 
     def getAction(self, state: GameState) -> Directions:
         """
@@ -269,22 +285,20 @@ class QLearnAgent(Agent):
             legal.remove(Directions.STOP)
 
         # logging to help you understand the inputs, feel free to remove
-        print("Legal moves: ", legal)
-        print("Pacman position: ", state.getPacmanPosition())
-        print("Ghost positions:", state.getGhostPositions())
-        print("Food locations: ")
-        print(state.getFood())
-        print("Score: ", state.getScore())
+        # print("Legal moves: ", legal)
+        # print("Pacman position: ", state.getPacmanPosition())
+        # print("Ghost positions:", state.getGhostPositions())
+        # print("Food locations: ")
+        # print(state.getFood())
+        # print("Score: ", state.getScore())
 
         stateFeatures = GameStateFeatures(state)
 
         # Pick action with max Q value
-        # stateTuple = stateFeatures.getFeaturesTuple()
-
         action = None
         if self.lastState is not None:
             lastStateFeatures = GameStateFeatures(self.lastState)
-            self.updateCount(self.lastState, self.lastAction)
+            self.updateCount(lastStateFeatures, self.lastAction)
             self.learn(
                 lastStateFeatures,
                 self.lastAction,
@@ -292,19 +306,16 @@ class QLearnAgent(Agent):
                 stateFeatures,
             )
 
-        if util.flipCoin(self.epsilon):
-            action = random.choice(legal)
-        else:
-            maxAction = None
-            maxValue = 0
-            for action in legal:
-                expectedUtility = self.getQValue(stateFeatures, action)
-                count = self.getCount(stateFeatures, action)
-                exploreValue = self.explorationFn(expectedUtility, count)
-                if exploreValue > maxValue:
-                    maxValue = exploreValue
-                    maxAction = action
-            action = maxAction
+        maxAction = None
+        maxValue = 0
+        for action in legal:
+            expectedUtility = self.getQValue(stateFeatures, action)
+            count = self.getCount(stateFeatures, action)
+            exploreValue = self.explorationFn(expectedUtility, count)
+            if exploreValue > maxValue:
+                maxValue = exploreValue
+                maxAction = action
+        action = maxAction
 
         if action is None:
             action = random.choice(legal)
@@ -330,6 +341,7 @@ class QLearnAgent(Agent):
         stateFeatures = GameStateFeatures(state)
 
         # update Q-values
+        self.updateCount(lastStateFeatures, self.lastAction)
         self.learn(
             lastStateFeatures,
             self.lastAction,
@@ -340,10 +352,12 @@ class QLearnAgent(Agent):
         self.lastState = None
         self.lastAction = None
 
-        if self.getEpisodesSoFar() < self.getNumTraining() / 2:
+        if self.getEpisodesSoFar() == 0:
             self.setEpsilon(0.1)
-        else:
+            self.setAlpha(0.3)
+        elif self.getEpisodesSoFar() == self.getNumTraining() / 2:
             self.setEpsilon(0.05)
+            self.setAlpha(0.1)
 
         # Keep track of the number of games played, and set learning
         # parameters to zero when we are done with the pre-set number
