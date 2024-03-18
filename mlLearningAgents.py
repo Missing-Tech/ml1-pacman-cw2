@@ -220,7 +220,7 @@ class QLearnAgent(Agent):
         nextQValue = self.maxQValue(nextState)
 
         # Update the Q-value for the state-action pair
-        self.qValues[state][action] = qValue + self.alpha * (
+        self.qValues[state][action] = (1 - self.alpha) * qValue + self.alpha * (
             reward + self.gamma * nextQValue - qValue
         )
 
